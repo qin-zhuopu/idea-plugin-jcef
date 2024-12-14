@@ -15,6 +15,7 @@ import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.handler.CefLoadHandler
 import org.cef.network.CefRequest
+import java.lang.reflect.Method
 import javax.swing.BoxLayout
 
 
@@ -58,6 +59,31 @@ class MyToolWindowFactory : ToolWindowFactory {
             }
         }
 
+        val jsQuery = JBCefJSQuery.create(browser as JBCefBrowserBase) // 1
+        jsQuery.addHandler { message ->
+            thisLogger().warn(message)
+            try {
+                val gson = Gson()
+                val type = object : TypeToken<Map<String, Any>>() {}.type
+                val data: Map<String, Any> = gson.fromJson(message, type)
+                thisLogger().warn(data.toString())
+
+
+                val methodName = data["methodName"] as? String
+                val params = data["params"] as? List<*>
+
+                if (methodName != null) {
+                    val result = invokeMethod(methodName, params ?: emptyList<String>())
+                    JBCefJSQuery.Response(result.toString())
+                } else {
+                    JBCefJSQuery.Response("", 400, "Method name is required")
+                }
+            } catch (e: Exception) {
+                thisLogger().warn(e)
+                JBCefJSQuery.Response("", 500, "Error: ${e.message}")
+            }
+        }
+
         browser.jbCefClient.addLoadHandler(object : CefLoadHandler {
             override fun onLoadEnd(cefBrowser: CefBrowser?, p1: CefFrame?, p2: Int) {
                 thisLogger().warn("onLoadEnd")
@@ -73,6 +99,20 @@ class MyToolWindowFactory : ToolWindowFactory {
                         )
                     };
                 };
+                
+                const target = {  __run(methodName, params) {
+                    console.log(methodName, params);
+                    const call = JSON.stringify({ methodName, params });
+                    ${
+                        jsQuery.inject(
+                            "call",
+                            "function(response) { console.log('Success:', response); }",
+                            "function(error_code, error_message) { console.error('Error:', error_code, error_message); }"
+                        )
+                    };
+                }};
+                const handler = {  get(target, methodName) {    return (...params) => target.__run(methodName, params);  }};
+                const ide = new Proxy(target, handler);                
                     """, url, 0
                 )
             }
@@ -93,6 +133,24 @@ class MyToolWindowFactory : ToolWindowFactory {
 
         val content = ContentFactory.getInstance().createContent(myPanel, null, false)
         toolWindow.contentManager.addContent(content)
+    }
+
+    private fun invokeMethod(methodName: String, params: List<*>): Any {
+        return try {
+            val method: Method? = this::class.java.methods.firstOrNull { it.name == methodName }
+            method?.invoke(this, *params.toTypedArray()) ?: throw NoSuchMethodException("Method $methodName not found")
+        } catch (e: Exception) {
+            throw RuntimeException("Failed to invoke method: $e")
+        }
+    }
+
+    // 示例方法
+    fun sayHello(name: String): String {
+        return "Hello, $name!"
+    }
+
+    fun addNumbers(a: Double, b: Double): Double {
+        return a + b
     }
 
 }
