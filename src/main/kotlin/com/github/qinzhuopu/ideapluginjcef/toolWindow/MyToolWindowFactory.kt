@@ -1,16 +1,13 @@
 package com.github.qinzhuopu.ideapluginjcef.toolWindow
 
-import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
-import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.content.ContentFactory
-import com.github.qinzhuopu.ideapluginjcef.MyBundle
-import com.github.qinzhuopu.ideapluginjcef.services.MyProjectService
-import javax.swing.JButton
+import com.intellij.ui.jcef.JBCefBrowser
+import javax.swing.BoxLayout
 
 
 class MyToolWindowFactory : ToolWindowFactory {
@@ -19,27 +16,19 @@ class MyToolWindowFactory : ToolWindowFactory {
         thisLogger().warn("Don't forget to remove all non-needed sample code files with their corresponding registration entries in `plugin.xml`.")
     }
 
+    override fun shouldBeAvailable(project: Project) = true
+
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val myToolWindow = MyToolWindow(toolWindow)
-        val content = ContentFactory.getInstance().createContent(myToolWindow.getContent(), null, false)
+        val myPanel = JBPanel<JBPanel<*>>().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        }
+
+        val url = "https://example.com/"
+        val browser = JBCefBrowser.createBuilder().setUrl(url).setOffScreenRendering(false).build()
+        myPanel.add(browser.component)
+
+        val content = ContentFactory.getInstance().createContent(myPanel, null, false)
         toolWindow.contentManager.addContent(content)
     }
 
-    override fun shouldBeAvailable(project: Project) = true
-
-    class MyToolWindow(toolWindow: ToolWindow) {
-
-        private val service = toolWindow.project.service<MyProjectService>()
-
-        fun getContent() = JBPanel<JBPanel<*>>().apply {
-            val label = JBLabel(MyBundle.message("randomLabel", "?"))
-
-            add(label)
-            add(JButton(MyBundle.message("shuffle")).apply {
-                addActionListener {
-                    label.text = MyBundle.message("randomLabel", service.getRandomNumber())
-                }
-            })
-        }
-    }
 }
